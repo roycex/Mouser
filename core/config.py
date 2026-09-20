@@ -225,7 +225,7 @@ def _default_actions_ring_slots(platform=None):
 
 
 DEFAULT_CONFIG = {
-    "version": 11,
+    "version": 12,
     "active_profile": "default",
     "profiles": {
         "default": {
@@ -297,6 +297,10 @@ DEFAULT_CONFIG = {
         "actions_ring_hover_haptic": True,
         "actions_ring_use_global": True,
         "actions_ring_slots": _default_actions_ring_slots(),
+        # User-registered program launch targets (global: shared by every
+        # profile). Must be a list -- _validate_types() resets a list-typed
+        # value whose type no longer matches, so {} would wipe user data.
+        "launch_targets": [],
     },
 }
 
@@ -729,6 +733,19 @@ def _migrate(cfg):
         settings = cfg.setdefault("settings", {})
         settings.setdefault("scroll_force", 50)
         cfg["version"] = 11
+
+    if version < 12:
+        # v11 -> v12: user-registered program launch targets.
+        #
+        # Targets live in settings (global, shared by every profile) while the
+        # button bindings stay per-profile -- the same split as
+        # screenshot_directory / actions_ring_use_global. Nothing is seeded:
+        # an empty list keeps the feature invisible until the user adds a
+        # target, and existing configs are otherwise untouched.
+        settings = cfg.setdefault("settings", {})
+        if not isinstance(settings.get("launch_targets"), list):
+            settings["launch_targets"] = []
+        cfg["version"] = 12
 
     cfg.setdefault("settings", {})
     cfg["settings"].setdefault("appearance_mode", "system")

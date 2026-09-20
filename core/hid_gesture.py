@@ -1034,6 +1034,7 @@ class HidGestureListener:
 
     def __init__(self, on_down=None, on_up=None, on_move=None,
                  on_connect=None, on_disconnect=None, extra_diverts=None,
+                 adoptable_diverts=None,
                  on_wheel=None, on_thumbwheel=None,
                  on_thumb_button_down=None, on_thumb_button_up=None,
                  on_thumb_button_move=None, on_battery=None):
@@ -1071,6 +1072,13 @@ class HidGestureListener:
         self._extra_diverts = {
             cid: {**info, "held": False}
             for cid, info in self._static_extra_diverts.items()
+        }
+        # Adoptable CIDs (e.g. back/forward 0x0053/0x0056): registered as
+        # extras ONLY when the device reports them already diverted at
+        # connect time. See `_adopt_diverted_extras` for why they are never
+        # set-diverted proactively.
+        self._adoptable_diverts: dict[int, dict] = {
+            int(cid): dict(info) for cid, info in (adoptable_diverts or {}).items()
         }
         self._thumb_button_cid: int | None = None
         # Per-CID divert acknowledgment: a CID lives in ``_extra_diverts`` from
@@ -1751,6 +1759,48 @@ class HidGestureListener:
             "held": False,
         }
 
+    def _adopt_diverted_extras(self, controls):
+        """Take over adoptable CIDs that are ALREADY diverted on the device.
+
+        A host-side residue (Logi Options+ session, or a crashed process)
+        can leave back/forward (0x0053/0x0056) diverted: the buttons then
+        emit diverted-button HID++ notifications instead of standard OS
+        button messages, so the OS-level hook never sees them and every
+        press silently vanishes. The divert survives mouse power cycles on
+        some firmware and a redundant setCidReporting is rejected, so we
+        neither try to clear nor re-set the state here -- we simply start
+        listening for the CID in the diverted-button stream and let the
+        hook serve the mapping. When the divert flag is absent the CID is
+        left alone: the OS path delivers it normally.
+
+        Must run after `_install_thumb_button_extra` and before
+        `_divert_extras` so adopted entries are visible to the ack round.
+        """
+        if not self._adoptable_diverts:
+            return
+        live = {
+            int(c["cid"]): int(c.get("mapping_flags", 0) or 0)
+            for c in controls or ()
+        }
+        for cid, callbacks in self._adoptable_diverts.items():
+            if cid == self._gesture_cid or cid in self._extra_diverts:
+                continue
+            flags = live.get(cid)
+            if flags is None:
+                print(f"[HidGesture] Adopt {_format_cid(cid)}: skipped -- "
+                      f"firmware does not advertise this CID")
+                continue
+            if not flags & 0x0001:
+                continue  # not diverted -> OS button path owns it
+            self._extra_diverts[cid] = {
+                "on_down": callbacks.get("on_down"),
+                "on_up": callbacks.get("on_up"),
+                "held": False,
+                "adopted": True,
+            }
+            print(f"[HidGesture] Adopted pre-diverted {_format_cid(cid)} "
+                  f"(reporting=0x{flags:04X}) -- Mouser now serves its events")
+
     def set_thumb_rawxy_enabled(self, enabled: bool) -> None:
         """Enable/disable handing the rawXY stream to the thumb button while
         held. Called by the hook when the thumb's tap action is "Do Nothing"
@@ -1832,6 +1882,13 @@ class HidGestureListener:
         self._extra_divert_acks.clear()
         failed: list[int] = []
         for cid in list(self._extra_diverts.keys()):
+            if self._extra_diverts[cid].get("adopted"):
+                # Pre-diverted by someone else and adopted as-is: do NOT
+                # re-issue setCidReporting (some firmwares reject a
+                # redundant SET, which would drop a working button). The
+                # divert is already live, so ack directly.
+                self._extra_divert_acks.add(cid)
+                continue
             resp = self._set_cid_reporting(cid, _DIVERT_BUTTON_ONLY)
             ok = resp is not None
             print(f"[HidGesture] Extra divert {_format_cid(cid)}: "
@@ -3210,6 +3267,9 @@ class HidGestureListener:
                         # controls so the helper can refuse to divert CIDs the
                         # firmware does not advertise.
                         self._install_thumb_button_extra(device_spec, controls)
+                        # Adopt CIDs a foreign host left diverted (e.g. the
+                        # stuck back/forward residue) -- no SET is issued.
+                        self._adopt_diverted_extras(controls)
                         self._divert_extras()
                         if idx == BT_DEV_IDX:
                             actual_transport = "Bluetooth"

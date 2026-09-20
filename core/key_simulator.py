@@ -77,6 +77,40 @@ def request_screenshot_action(action_id):
     return True
 
 
+# ==================================================================
+# Program launch helpers (shared across platforms)
+# ==================================================================
+
+_launch_action_handler = None
+
+
+def set_launch_action_handler(handler):
+    """Register a callable that starts programs off the hook thread."""
+    global _launch_action_handler
+    _launch_action_handler = handler
+
+
+def request_launch_action(action_id):
+    """Hand a launch action to the registered controller.
+
+    Runs on the hook thread, so the registered handler must only hand the work
+    off (a queued signal) and return immediately.  Returns True when the id was
+    a launch action -- handled or not -- and False when it is not ours.
+    """
+    from core import program_launcher
+    if not program_launcher.is_launch_action(action_id):
+        return False
+    if _launch_action_handler is None:
+        print(f"[KeySimulator] launch action unavailable: {action_id}")
+        return False
+    try:
+        _launch_action_handler(action_id)
+    except Exception as exc:
+        print(f"[KeySimulator] launch action handler failed: {exc}")
+        import traceback; traceback.print_exc()
+    return True
+
+
 def execute_screenshot_shortcut(action_id):
     """Run the platform shortcut for a screenshot action when one exists."""
     if not is_screenshot_action(action_id):
@@ -688,6 +722,8 @@ if sys.platform == "win32":
                 inject_mouse_up(action_id)
                 return
             if request_screenshot_action(action_id):
+                return
+            if request_launch_action(action_id):
                 return
             action = ACTIONS.get(action_id)
             if not action or not action["keys"]:
@@ -1369,6 +1405,8 @@ elif sys.platform == "darwin":
             return
         if request_screenshot_action(action_id):
             return
+        if request_launch_action(action_id):
+            return
         action = ACTIONS.get(action_id)
         if not action:
             return
@@ -1830,6 +1868,8 @@ elif sys.platform == "linux":
             inject_mouse_up(action_id)
             return
         if request_screenshot_action(action_id):
+            return
+        if request_launch_action(action_id):
             return
         action = ACTIONS.get(action_id)
         if not action or not action["keys"]:

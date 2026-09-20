@@ -460,8 +460,20 @@ Item {
         var actions = backend.allActions
         for (var i = 0; i < actions.length; i++)
             if (actions[i].id === actionId) return i
-        // Custom shortcut: point to the __custom__ sentinel at the end
-        if (actionId.startsWith("custom:")) return actions.length - 1
+        // Not a concrete action: point at the sentinel that owns the prefix,
+        // so the picker highlights the right entry instead of silently
+        // showing "Do Nothing". Never assume the sentinel is last -- both
+        // "__custom__" and "__launch__" are appended, so the old
+        // actions.length - 1 fallback would highlight the wrong one.
+        if (actionId.startsWith("custom:")) return sentinelIndex("__custom__")
+        if (actionId.startsWith("launch:")) return sentinelIndex("__launch__")
+        return 0
+    }
+
+    function sentinelIndex(sentinelId) {
+        var actions = backend.allActions
+        for (var i = 0; i < actions.length; i++)
+            if (actions[i].id === sentinelId) return i
         return 0
     }
 
@@ -472,6 +484,10 @@ Item {
 
     function isCustomAction(actionId) {
         return actionId.startsWith("custom:")
+    }
+
+    function launchLabel(actionId) {
+        return backend.launchTargetName(actionId)
     }
 
     function gestureSummary(key) {
@@ -1347,6 +1363,10 @@ Item {
                                                     keyCaptureDialog.open(selectedProfile, "hscroll_left")
                                                     return
                                                 }
+                                                if (aid === "__launch__") {
+                                                    launchTargetDialog.open()
+                                                    return
+                                                }
                                                 backend.setProfileMapping(
                                                     selectedProfile, "hscroll_left", aid)
                                             }
@@ -1379,6 +1399,10 @@ Item {
                                             onPicked: function(aid) {
                                                 if (aid === "__custom__") {
                                                     keyCaptureDialog.open(selectedProfile, "hscroll_right")
+                                                    return
+                                                }
+                                                if (aid === "__launch__") {
+                                                    launchTargetDialog.open()
                                                     return
                                                 }
                                                 backend.setProfileMapping(
@@ -1417,6 +1441,10 @@ Item {
                                         var aid = backend.allActions[index].id
                                         if (aid === "__custom__") {
                                             keyCaptureDialog.open(selectedProfile, selectedButton)
+                                            return
+                                        }
+                                        if (aid === "__launch__") {
+                                            launchTargetDialog.open()
                                             return
                                         }
                                         backend.setProfileMapping(selectedProfile, selectedButton, aid)
@@ -1519,6 +1547,10 @@ Item {
                                                 keyCaptureDialog.open(selectedProfile, selectedButton + "_left")
                                                 return
                                             }
+                                            if (aid === "__launch__") {
+                                                launchTargetDialog.open()
+                                                return
+                                            }
                                             backend.setProfileMapping(
                                                 selectedProfile, selectedButton + "_left", aid)
                                         }
@@ -1552,6 +1584,10 @@ Item {
                                             var aid = backend.allActions[index].id
                                             if (aid === "__custom__") {
                                                 keyCaptureDialog.open(selectedProfile, selectedButton + "_right")
+                                                return
+                                            }
+                                            if (aid === "__launch__") {
+                                                launchTargetDialog.open()
                                                 return
                                             }
                                             backend.setProfileMapping(
@@ -1589,6 +1625,10 @@ Item {
                                                 keyCaptureDialog.open(selectedProfile, selectedButton + "_up")
                                                 return
                                             }
+                                            if (aid === "__launch__") {
+                                                launchTargetDialog.open()
+                                                return
+                                            }
                                             backend.setProfileMapping(
                                                 selectedProfile, selectedButton + "_up", aid)
                                         }
@@ -1622,6 +1662,10 @@ Item {
                                             var aid = backend.allActions[index].id
                                             if (aid === "__custom__") {
                                                 keyCaptureDialog.open(selectedProfile, selectedButton + "_down")
+                                                return
+                                            }
+                                            if (aid === "__launch__") {
+                                                launchTargetDialog.open()
                                                 return
                                             }
                                             backend.setProfileMapping(
@@ -1703,6 +1747,10 @@ Item {
                                                             keyCaptureDialog.open(selectedProfile, selectedButton)
                                                             return
                                                         }
+                                                        if (aid === "__launch__") {
+                                                            launchTargetDialog.open()
+                                                            return
+                                                        }
                                                         backend.setProfileMapping(
                                                             selectedProfile,
                                                             selectedButton, aid)
@@ -1771,6 +1819,10 @@ Item {
                                         var aid = backend.allActions[index].id
                                         if (aid === "__custom__") {
                                             keyCaptureDialog.open(selectedProfile, selectedButton + "_tap")
+                                            return
+                                        }
+                                        if (aid === "__launch__") {
+                                            launchTargetDialog.open()
                                             return
                                         }
                                         backend.setProfileMapping(
@@ -1849,6 +1901,10 @@ Item {
                                                 var key = selectedButton + "_" + modelData.dir
                                                 if (aid === "__custom__") {
                                                     keyCaptureDialog.open(selectedProfile, key)
+                                                    return
+                                                }
+                                                if (aid === "__launch__") {
+                                                    launchTargetDialog.open()
                                                     return
                                                 }
                                                 backend.setProfileMapping(selectedProfile, key, aid)
@@ -2912,6 +2968,16 @@ Item {
                 "custom:" + comboString)
             refreshSelectedProfileMappings()
             selectedActionId = "custom:" + comboString
+        }
+    }
+
+    // ── Program launch target dialog ──────────────────────────
+    // Opened from the "Add Program…" entry of every action picker; it doubles
+    // as the target manager (the registered list at its bottom edits/deletes).
+    LaunchTargetDialog {
+        id: launchTargetDialog
+        onSaved: function(id) {
+            refreshSelectedProfileMappings()
         }
     }
 }

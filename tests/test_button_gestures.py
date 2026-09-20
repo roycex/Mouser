@@ -226,6 +226,44 @@ class BaseHookButtonGestureTests(unittest.TestCase):
         hook._on_hid_mode_shift_up()
         self.assertEqual(dispatched, ["mode_shift_down", "mode_shift_up"])
 
+    def test_back_hid_adopted_press_dispatches_xbutton1(self):
+        # Back (0x0053) adopted from a foreign divert: its HID++ press must
+        # mirror the OS XBUTTON1 press/release into the dispatch pipeline.
+        hook = self._hook(owners=())
+        dispatched = []
+        hook._dispatch = lambda ev: dispatched.append(ev.event_type)
+        hook._on_hid_back_down()
+        hook._on_hid_back_up()
+        self.assertEqual(dispatched, ["xbutton1_down", "xbutton1_up"])
+
+    def test_forward_hid_adopted_press_dispatches_xbutton2(self):
+        hook = self._hook(owners=())
+        dispatched = []
+        hook._dispatch = lambda ev: dispatched.append(ev.event_type)
+        hook._on_hid_forward_down()
+        hook._on_hid_forward_up()
+        self.assertEqual(dispatched, ["xbutton2_down", "xbutton2_up"])
+
+    def test_back_hid_press_arms_gesture_when_owner(self):
+        # xbutton1 armed as a gesture pad: the adopted HID press starts the
+        # hold instead of dispatching a plain press (mode-shift parity).
+        hook = self._hook(owners=("xbutton1",))
+        dispatched = []
+        hook._dispatch = lambda ev: dispatched.append(ev.event_type)
+        hook._on_hid_back_down()
+        self.assertEqual(hook._button_gesture_active_owner, "xbutton1")
+        self.assertEqual(dispatched, [])
+        hook._on_hid_back_up()
+        self.assertIsNone(hook._button_gesture_active_owner)
+
+    def test_adoptable_diverts_declare_back_forward_handlers(self):
+        hook = BaseMouseHook()
+        adoptable = hook._build_adoptable_diverts()
+        self.assertEqual(set(adoptable), {0x0053, 0x0056})
+        for cid, info in adoptable.items():
+            self.assertIn("on_down", info)
+            self.assertIn("on_up", info)
+
 
 # ── Engine: arms owners at the hook + routes swipe events ───────────────────
 

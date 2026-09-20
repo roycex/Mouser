@@ -465,6 +465,27 @@ class BaseMouseHook:
             }
         return extra
 
+    def _build_adoptable_diverts(self):
+        """CIDs to take over ONLY when already diverted on the device.
+
+        Back/forward (0x0053/0x0056) are normally plain OS buttons and must
+        NOT be diverted by Mouser -- native browser/Explorer navigation has
+        to keep working when their mappings are "none". But a host-side
+        residue (Logi Options+ session, or a crashed process) can leave
+        them diverted: Windows then never sees XBUTTON messages and the
+        buttons go dead. In that state Mouser adopts the live divert and
+        serves the presses itself; see `_adopt_diverted_extras`."""
+        return {
+            0x0053: {
+                "on_down": self._on_hid_back_down,
+                "on_up": self._on_hid_back_up,
+            },
+            0x0056: {
+                "on_down": self._on_hid_forward_down,
+                "on_up": self._on_hid_forward_up,
+            },
+        }
+
     def _start_hid_listener(self):
         platform_module = getattr(self.__class__, "_platform_module", None)
         listener_cls = getattr(platform_module, "HidGestureListener", HidGestureListener)
@@ -477,6 +498,7 @@ class BaseMouseHook:
             on_connect=self._on_hid_connect,
             on_disconnect=self._on_hid_disconnect,
             extra_diverts=self._build_extra_diverts(),
+            adoptable_diverts=self._build_adoptable_diverts(),
             on_thumb_button_down=self._on_hid_thumb_button_down,
             on_thumb_button_up=self._on_hid_thumb_button_up,
             on_thumb_button_move=self._on_hid_thumb_button_move,
@@ -610,6 +632,38 @@ class BaseMouseHook:
 
     def _on_hid_dpi_switch_up(self):
         self._dispatch(MouseEvent(MouseEvent.DPI_SWITCH_UP))
+
+    def _on_hid_back_down(self):
+        # CID 0x0053 adopted from a pre-diverted state: no OS XBUTTON event
+        # will arrive, so mirror the OS press into the normal dispatch path.
+        if getattr(self, "_ui_passthrough", False):
+            return
+        if self.is_button_gesture_owner("xbutton1") and self.arm_button_gesture(
+            "xbutton1"
+        ):
+            return
+        self._dispatch(MouseEvent(MouseEvent.XBUTTON1_DOWN))
+
+    def _on_hid_back_up(self):
+        if self._button_gesture_active_owner == "xbutton1":
+            self.release_button_gesture("xbutton1")
+            return
+        self._dispatch(MouseEvent(MouseEvent.XBUTTON1_UP))
+
+    def _on_hid_forward_down(self):
+        if getattr(self, "_ui_passthrough", False):
+            return
+        if self.is_button_gesture_owner("xbutton2") and self.arm_button_gesture(
+            "xbutton2"
+        ):
+            return
+        self._dispatch(MouseEvent(MouseEvent.XBUTTON2_DOWN))
+
+    def _on_hid_forward_up(self):
+        if self._button_gesture_active_owner == "xbutton2":
+            self.release_button_gesture("xbutton2")
+            return
+        self._dispatch(MouseEvent(MouseEvent.XBUTTON2_UP))
 
     def _on_hid_thumb_button_down(self):
         # The MX Master 4's small thumb-area button (CID 0x00C3) is the

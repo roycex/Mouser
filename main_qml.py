@@ -1214,6 +1214,23 @@ def main():
         app._mouser_screenshot_controller = screenshot_controller
         set_screenshot_action_handler(screenshot_controller.request_action)
 
+    # ── Program launch controller ──────────────────────────────
+    # One controller for every platform: the platform differences live inside
+    # core.program_launcher.build_launch_argv, so unlike the screenshot
+    # controllers this one does not branch on sys.platform.
+    from core.key_simulator import set_launch_action_handler
+    from ui.program_launch import ProgramLaunchController
+
+    program_launcher_controller = ProgramLaunchController(
+        status_callback=backend.statusMessage.emit,
+        target_provider=backend.findLaunchTargetForLaunch,
+        parent=app,
+    )
+    # Keep a strong reference: otherwise the controller is collected and launch
+    # actions silently stop working.
+    app._mouser_program_launcher = program_launcher_controller
+    set_launch_action_handler(program_launcher_controller.request_action)
+
     # ── QML Engine ─────────────────────────────────────────────
     qml_engine = QQmlApplicationEngine()
     qml_engine.addImageProvider("appicons", AppIconProvider(ROOT))

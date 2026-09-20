@@ -25,6 +25,18 @@ from core.config import (
     GESTURE_SWIPE_ACTION, SWIPE_CAPABLE_BUTTONS, GESTURE_SWIPE_DIRECTIONS,
 )
 from core import app_catalog
+from core.program_launcher import (
+    LaunchArgsError,
+    is_launch_action,
+    launch_action_id,
+    launch_action_label,
+    launch_target_id,
+    make_target,
+    name_from_path,
+    normalize_targets,
+    parse_launch_args,
+    validate_target as validate_launch_target,
+)
 from core.device_layouts import get_device_layout, get_manual_layout_choices
 from core.key_capture import create_super_key_guard
 from core.key_registry import (
@@ -77,9 +89,11 @@ from core.version import APP_VERSION
 from ui.screenshot_common import screenshot_file_path, screenshot_file_paths, screenshots_dir
 
 
-def _action_label(action_id):
+def _action_label(action_id, launch_targets=()):
     if action_id.startswith("custom:"):
         return custom_action_label(action_id)
+    if is_launch_action(action_id):
+        return launch_action_label(action_id, launch_targets)
     if action_id == GESTURE_SWIPE_ACTION:
         return "Gesture Swipe"
     return ACTIONS.get(action_id, {}).get("label", "Do Nothing")
@@ -247,6 +261,7 @@ class Backend(QObject):
     hapticChanged = Signal()
     forceSensingChanged = Signal()
     knownAppsChanged = Signal()
+    launchTargetsChanged = Signal()
     updateAvailable = Signal(str, str)
     updateInstallChanged = Signal()
     superKeyHeldChanged = Signal()
@@ -383,6 +398,7 @@ class Backend(QObject):
         self.profilesChanged.connect(self._invalidate_profiles_cache)
         self.activeProfileChanged.connect(self._invalidate_profiles_cache)
         self.knownAppsChanged.connect(self._invalidate_known_apps_cache)
+        self.launchTargetsChanged.connect(self._invalidate_launch_targets)
         self.deviceLayoutChanged.connect(self._invalidate_device_dependent_caches)
 
         # Wire engine callbacks
@@ -471,7 +487,7 @@ class Backend(QObject):
                 "key": key,
                 "name": name,
                 "actionId": aid,
-                "actionLabel": _action_label(aid),
+                "actionLabel": _action_label(aid, self._launch_targets()),
                 "index": idx,
             })
         return result
@@ -484,6 +500,25 @@ class Backend(QObject):
 
     def _invalidate_known_apps_cache(self) -> None:
         self._known_apps_cache = None
+
+    def _invalidate_launch_targets(self) -> None:
+        """Launch targets feed the action list, so drop the action caches and
+        let the QML pickers rebind (same idiom as ``knownAppsChanged``)."""
+        self._invalidate_device_dependent_caches()
+        self.deviceLayoutChanged.emit()
+
+    def _launch_targets(self):
+        """Normalized view of ``settings.launch_targets`` (never raises)."""
+        raw = self._cfg.get("settings", {}).get("launch_targets", [])
+        return normalize_targets(raw)
+
+    def _find_launch_target(self, target_id):
+        if not target_id:
+            return None
+        for target in self._launch_targets():
+            if target["id"] == target_id:
+                return target
+        return None
 
     def _invalidate_device_dependent_caches(self) -> None:
         # ``buttons`` depends on ``_effective_supported_buttons`` and
@@ -538,6 +573,12 @@ class Backend(QObject):
         result.append({"category": "Custom", "actions": [
             {"id": "__custom__", "label": "Custom Shortcut\u2026"}
         ]})
+        launch_actions = [
+            {"id": launch_action_id(t["id"]), "label": t["name"]}
+            for t in self._launch_targets()
+        ]
+        launch_actions.append({"id": "__launch__", "label": "Add Program\u2026"})
+        result.append({"category": "Launch", "actions": launch_actions})
         return result
 
     @Property(list, notify=deviceLayoutChanged)
@@ -568,6 +609,12 @@ class Backend(QObject):
                            "category": data["category"]})
         result.append({"id": "__custom__", "label": "Custom Shortcut\u2026",
                         "category": "Custom"})
+        for target in self._launch_targets():
+            result.append({"id": launch_action_id(target["id"]),
+                           "label": target["name"],
+                           "category": "Launch"})
+        result.append({"id": "__launch__", "label": "Add Program\u2026",
+                       "category": "Launch"})
         return result
 
     @Property(list, constant=True)
@@ -1953,6 +2000,151 @@ class Backend(QObject):
         self.profilesChanged.emit()
         self.statusMessage.emit("Profile created")
 
+    # ── Program launch targets ─────────────────────────────────
+    @Property(list, notify=launchTargetsChanged)
+    def launchTargets(self):
+        """Registered program launch targets, for the target dialog."""
+        return self._launch_targets()
+
+    def findLaunchTargetForLaunch(self, target_id):
+        """Public bridge for ProgramLaunchController (GUI thread only)."""
+        return self._find_launch_target(target_id)
+
+    @Slot(result=str)
+    def browseLaunchTargetPath(self):
+        """Open a file picker for a program; '' when cancelled."""
+        from PySide6.QtWidgets import QFileDialog
+        if sys.platform == "darwin":
+            path, _ = QFileDialog.getOpenFileName(
+                None, "Select Program", "/Applications", "Apps (*.app)")
+        elif sys.platform == "linux":
+            path, _ = QFileDialog.getOpenFileName(
+                None, "Select Program",
+                os.path.expanduser("~"),
+                "Applications (*)")
+        else:
+            path, _ = QFileDialog.getOpenFileName(
+                None, "Select Program",
+                os.environ.get("ProgramFiles", "C:\\Program Files"),
+                "Executables (*.exe)")
+        if not path:
+            return ""
+        return os.path.realpath(path) if sys.platform == "linux" else os.path.normpath(path)
+
+    @Slot(result=str)
+    def browseLaunchDirectory(self):
+        """Open a folder picker for the working directory; '' when cancelled."""
+        from PySide6.QtWidgets import QFileDialog
+        directory = QFileDialog.getExistingDirectory(
+            None, "Select Working Directory", os.path.expanduser("~"))
+        if not directory:
+            return ""
+        return os.path.realpath(directory) if sys.platform == "linux" else os.path.normpath(directory)
+
+    @Slot(str, result=str)
+    def suggestLaunchTargetName(self, path):
+        """Default display name for a picked program path (D-06)."""
+        return name_from_path(path) if path else ""
+
+    @Slot(str, result=str)
+    def launchTargetName(self, actionId):
+        """Display name for a launch action id; '' when the target is gone."""
+        target = self._find_launch_target(launch_target_id(actionId))
+        return target["name"] if target else ""
+
+    @Slot(str, result=str)
+    def validateLaunchArgs(self, argsText):
+        """'' when the arguments text tokenizes, else the failure reason."""
+        try:
+            parse_launch_args(argsText)
+        except LaunchArgsError as exc:
+            return str(exc)
+        return ""
+
+    @Slot(str, str, str, str, result=str)
+    def validateLaunchTarget(self, path, name, args, cwd):
+        """Inline validation for the dialog; '' when the target is valid."""
+        return validate_launch_target(
+            make_target(path, name=name, args=args, cwd=cwd))
+
+    @Slot(str, str, str, str, result=str)
+    def addLaunchTarget(self, path, name, args, cwd):
+        """Register a new launch target; returns its id, or '' on failure."""
+        return self._save_launch_target(path, name, args, cwd, None)
+
+    @Slot(str, str, str, str, str, result=str)
+    def updateLaunchTarget(self, targetId, path, name, args, cwd):
+        """Update an existing launch target in place; returns its id, or ''."""
+        return self._save_launch_target(path, name, args, cwd, targetId)
+
+    @Slot(str, result=bool)
+    def removeLaunchTarget(self, targetId):
+        """Delete a target and unbind every button that referenced it.
+
+        Rather than leaving dangling ``launch:`` ids behind, every mapping that
+        pointed at the removed target is reset to "Do Nothing" and the count is
+        reported, so the user knows which buttons need reassigning.
+        """
+        if not targetId:
+            return False
+        targets = [t for t in self._launch_targets() if t["id"] != targetId]
+        if len(targets) == len(self._launch_targets()):
+            return False
+        self._cfg.setdefault("settings", {})["launch_targets"] = targets
+        unbound = self._unbind_launch_action(launch_action_id(targetId))
+        save_config(self._cfg)
+        if self._engine:
+            self._engine.cfg = self._cfg
+            self._engine.reload_mappings()
+        self.launchTargetsChanged.emit()
+        self.mappingsChanged.emit()
+        self.profilesChanged.emit()
+        self.statusMessage.emit(
+            f"Launch target removed ({unbound} button(s) unbound)")
+        return True
+
+    def _save_launch_target(self, path, name, args, cwd, target_id):
+        """Shared create/update path.  Returns the target id or ''."""
+        if not path:
+            self.statusMessage.emit("Program path is required")
+            return ""
+        target = make_target(path, name=name, args=args, cwd=cwd,
+                             target_id=target_id)
+        error = validate_launch_target(target)
+        if error:
+            self.statusMessage.emit(error)
+            return ""
+        targets = self._launch_targets()
+        replaced = False
+        for index, existing in enumerate(targets):
+            if existing["id"] == target["id"]:
+                targets[index] = target
+                replaced = True
+                break
+        if not replaced:
+            targets.append(target)
+        self._cfg.setdefault("settings", {})["launch_targets"] = targets
+        save_config(self._cfg)
+        if self._engine:
+            self._engine.cfg = self._cfg
+            self._engine.reload_mappings()
+        self.launchTargetsChanged.emit()
+        self.statusMessage.emit(f"Launch target saved: {target['name']}")
+        return target["id"]
+
+    def _unbind_launch_action(self, action_id):
+        """Reset every mapping in every profile that points at action_id."""
+        if not action_id:
+            return 0
+        count = 0
+        for pdata in self._cfg.get("profiles", {}).values():
+            mappings = pdata.get("mappings", {})
+            for key, value in list(mappings.items()):
+                if value == action_id:
+                    mappings[key] = "none"
+                    count += 1
+        return count
+
     @Slot()
     def refreshKnownAppsSilently(self):
         app_catalog.get_app_catalog(refresh=True)
@@ -1987,13 +2179,13 @@ class Backend(QObject):
                 "key": key,
                 "name": name,
                 "actionId": aid,
-                "actionLabel": _action_label(aid),
+                "actionLabel": _action_label(aid, self._launch_targets()),
             })
         return result
 
     @Slot(str, result=str)
     def actionLabelFor(self, actionId):
-        return _action_label(actionId)
+        return _action_label(actionId, self._launch_targets())
 
     @Slot(int, int, str, result=str)
     def shortcutComboFromQtEvent(self, key, modifiers, text):

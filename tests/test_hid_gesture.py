@@ -1324,5 +1324,106 @@ class HidReconnectStormTests(unittest.TestCase):
         self.assertLess(time.monotonic() - start, 0.5)
 
 
+class AdoptDivertedExtrasTests(unittest.TestCase):
+    """CIDs left diverted by a foreign host (stuck back/forward residue).
+
+    Mouser never sets these CIDs itself, but when the device reports them
+    already diverted the presses only reach the HID++ diverted-button stream
+    -- the OS-level hook never sees XBUTTON. Adoption listens for the CID
+    without re-issuing setCidReporting (some firmwares reject a redundant
+    SET, which previously dropped the button entirely).
+    """
+
+    CONTROLS = [
+        {"cid": 0x0050, "flags": 0x0001, "mapping_flags": 0x0000},
+        {"cid": 0x0053, "flags": 0x0131, "mapping_flags": 0x0001},  # diverted
+        {"cid": 0x0056, "flags": 0x0131, "mapping_flags": 0x0000},  # clean
+    ]
+
+    def _listener(self, **kwargs):
+        return hid_gesture.HidGestureListener(**kwargs)
+
+    def test_adopt_registers_only_pre_diverted_cid(self):
+        on_down, on_up = Mock(), Mock()
+        listener = self._listener(
+            adoptable_diverts={
+                0x0053: {"on_down": on_down, "on_up": on_up},
+                0x0056: {"on_down": Mock(), "on_up": Mock()},
+            }
+        )
+        listener._gesture_cid = 0x00C3
+
+        with patch("builtins.print"):
+            listener._adopt_diverted_extras(self.CONTROLS)
+
+        # 0x0053 diverted -> adopted; 0x0056 clean -> left to the OS path.
+        self.assertIn(0x0053, listener._extra_diverts)
+        self.assertTrue(listener._extra_diverts[0x0053]["adopted"])
+        self.assertFalse(listener._extra_diverts[0x0053]["held"])
+        self.assertNotIn(0x0056, listener._extra_diverts)
+
+        listener._extra_diverts[0x0053]["on_down"]()
+        on_down.assert_called_once()
+        listener._extra_diverts[0x0053]["on_up"]()
+        on_up.assert_called_once()
+
+    def test_adopt_skips_absent_cid(self):
+        listener = self._listener(
+            adoptable_diverts={0x00FD: {"on_down": Mock(), "on_up": Mock()}}
+        )
+        with patch("builtins.print"):
+            listener._adopt_diverted_extras(self.CONTROLS)
+        self.assertEqual(listener._extra_diverts, {})
+
+    def test_adopt_skips_cid_already_managed(self):
+        on_down = Mock()
+        listener = self._listener(
+            adoptable_diverts={0x0053: {"on_down": on_down, "on_up": Mock()}}
+        )
+        listener._gesture_cid = 0x00C3
+        listener._extra_diverts[0x0053] = {
+            "on_down": Mock(), "on_up": Mock(), "held": False,
+        }
+        with patch("builtins.print"):
+            listener._adopt_diverted_extras(self.CONTROLS)
+        # Existing entry untouched (held key preserved, adopted not set).
+        self.assertFalse(listener._extra_diverts[0x0053].get("adopted"))
+
+    def test_adopt_skips_when_cid_is_gesture_cid(self):
+        listener = self._listener(
+            adoptable_diverts={0x0053: {"on_down": Mock(), "on_up": Mock()}}
+        )
+        listener._gesture_cid = 0x0053
+        with patch("builtins.print"):
+            listener._adopt_diverted_extras(self.CONTROLS)
+        self.assertEqual(listener._extra_diverts, {})
+
+    def test_divert_extras_never_sets_adopted_cids(self):
+        listener = self._listener()
+        listener._feat_idx = 0x09
+        listener._extra_diverts = {
+            0x0053: {
+                "on_down": Mock(), "on_up": Mock(),
+                "held": False, "adopted": True,
+            },
+            0x00C4: {"on_down": Mock(), "on_up": Mock(), "held": False},
+        }
+        with (
+            patch.object(listener, "_set_cid_reporting", return_value=True) as set_mock,
+            patch("builtins.print"),
+        ):
+            listener._divert_extras()
+
+        # Adopted CID must NOT be re-set -- only the owned extra is.
+        set_mock.assert_called_once_with(0x00C4, hid_gesture._DIVERT_BUTTON_ONLY)
+        self.assertIn(0x0053, listener._extra_divert_acks)
+        self.assertIn(0x0053, listener._extra_diverts)
+        self.assertIn(0x00C4, listener._extra_divert_acks)
+
+    def test_adoptable_diverts_default_empty(self):
+        listener = self._listener()
+        self.assertEqual(listener._adoptable_diverts, {})
+
+
 if __name__ == "__main__":
     unittest.main()

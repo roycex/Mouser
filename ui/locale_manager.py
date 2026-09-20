@@ -280,6 +280,25 @@ _TRANSLATIONS = {
         "about.launch_path": "Launch path",
         "about.close": "Close",
 
+        # Program launch target dialog
+        "launch_target.title_new": "Add Program",
+        "launch_target.title_edit": "Edit Program",
+        "launch_target.search": "Search installed apps",
+        "launch_target.browse": "Browse\u2026",
+        "launch_target.name": "Name",
+        "launch_target.path": "Program path",
+        "launch_target.args": "Arguments",
+        "launch_target.cwd": "Working directory (blank = program folder)",
+        "launch_target.save": "Save",
+        "launch_target.delete": "Delete",
+        "launch_target.cancel": "Cancel",
+        "launch_target.empty": "No launch targets yet",
+        "launch_target.installed": "Installed apps",
+        "launch_target.existing": "Registered targets",
+        "launch_target.edit": "Edit",
+        "launch_target.choose_cwd": "Choose\u2026",
+        "launch_target.save_failed": "Could not save this launch target",
+
         # Language names
         "lang.en": "English",
         "lang.zh_CN": "\u7b80\u4f53\u4e2d\u6587",
@@ -543,6 +562,24 @@ _TRANSLATIONS = {
         "about.launch_path": "\u542f\u52a8\u8def\u5f84",
         "about.close": "\u5173\u95ed",
 
+        "launch_target.title_new": "\u6dfb\u52a0\u542f\u52a8\u7a0b\u5e8f",
+        "launch_target.title_edit": "\u7f16\u8f91\u542f\u52a8\u7a0b\u5e8f",
+        "launch_target.search": "\u641c\u7d22\u5df2\u5b89\u88c5\u5e94\u7528",
+        "launch_target.browse": "\u6d4f\u89c8\u2026",
+        "launch_target.name": "\u540d\u79f0",
+        "launch_target.path": "\u7a0b\u5e8f\u8def\u5f84",
+        "launch_target.args": "\u542f\u52a8\u53c2\u6570",
+        "launch_target.cwd": "\u5de5\u4f5c\u76ee\u5f55\uff08\u7559\u7a7a\u5219\u7528\u7a0b\u5e8f\u6240\u5728\u76ee\u5f55\uff09",
+        "launch_target.save": "\u4fdd\u5b58",
+        "launch_target.delete": "\u5220\u9664",
+        "launch_target.cancel": "\u53d6\u6d88",
+        "launch_target.empty": "\u8fd8\u6ca1\u6709\u542f\u52a8\u76ee\u6807",
+        "launch_target.installed": "\u5df2\u5b89\u88c5\u5e94\u7528",
+        "launch_target.existing": "\u5df2\u6ce8\u518c\u7684\u76ee\u6807",
+        "launch_target.edit": "\u7f16\u8f91",
+        "launch_target.choose_cwd": "\u9009\u62e9\u2026",
+        "launch_target.save_failed": "\u65e0\u6cd5\u4fdd\u5b58\u8be5\u542f\u52a8\u76ee\u6807",
+
         "lang.en": "English",
         "lang.zh_CN": "\u7b80\u4f53\u4e2d\u6587",
         "lang.zh_TW": "\u7e41\u9ad4\u4e2d\u6587",
@@ -805,6 +842,24 @@ _TRANSLATIONS = {
         "about.launch_path": "\u555f\u52d5\u8def\u5f91",
         "about.close": "\u95dc\u9589",
 
+        "launch_target.title_new": "\u65b0\u589e\u555f\u52d5\u7a0b\u5f0f",
+        "launch_target.title_edit": "\u7de8\u8f2f\u555f\u52d5\u7a0b\u5f0f",
+        "launch_target.search": "\u641c\u5c0b\u5df2\u5b89\u88dd\u61c9\u7528",
+        "launch_target.browse": "\u700f\u89bd\u2026",
+        "launch_target.name": "\u540d\u7a31",
+        "launch_target.path": "\u7a0b\u5f0f\u8def\u5f91",
+        "launch_target.args": "\u555f\u52d5\u53c3\u6578",
+        "launch_target.cwd": "\u5de5\u4f5c\u76ee\u9304\uff08\u7559\u7a7a\u5247\u7528\u7a0b\u5f0f\u6240\u5728\u76ee\u9304\uff09",
+        "launch_target.save": "\u5132\u5b58",
+        "launch_target.delete": "\u522a\u9664",
+        "launch_target.cancel": "\u53d6\u6d88",
+        "launch_target.empty": "\u9084\u6c92\u6709\u555f\u52d5\u76ee\u6a19",
+        "launch_target.installed": "\u5df2\u5b89\u88dd\u61c9\u7528",
+        "launch_target.existing": "\u5df2\u8a3b\u518a\u7684\u76ee\u6a19",
+        "launch_target.edit": "\u7de8\u8f2f",
+        "launch_target.choose_cwd": "\u9078\u64c7\u2026",
+        "launch_target.save_failed": "\u7121\u6cd5\u5132\u5b58\u8a72\u555f\u52d5\u76ee\u6a19",
+
         "lang.en": "English",
         "lang.zh_CN": "\u7b80\u4f53\u4e2d\u6587",
         "lang.zh_TW": "\u7e41\u9ad4\u4e2d\u6587",
@@ -873,6 +928,7 @@ _CATEGORY_TR: dict[str, dict[str, str]] = {
         "Scroll":     "\u6eda\u8f6e",
         "Screenshot": "\u622a\u56fe",
         "Custom":     "\u81ea\u5b9a\u4e49",
+        "Launch":     "\u542f\u52a8\u7a0b\u5e8f",
     },
     "zh_TW": {
         "Other":      "\u5176\u4ed6",
@@ -883,6 +939,7 @@ _CATEGORY_TR: dict[str, dict[str, str]] = {
         "Scroll":     "\u6eda\u8f2a",
         "Screenshot": "\u622a\u5716",
         "Custom":     "\u81ea\u8a02",
+        "Launch":     "\u555f\u52d5\u7a0b\u5f0f",
     },
 }
 
@@ -972,6 +1029,9 @@ _ACTION_TR: dict[str, dict[str, str]] = {
 
         # ── Custom ────────────────────────────────────────────────────
         "Custom Shortcut\u2026": "\u81ea\u5b9a\u4e49\u5feb\u6377\u952e\u2026",
+
+        # ── Launch ────────────────────────────────────────────────────
+        "Add Program\u2026": "\u6dfb\u52a0\u542f\u52a8\u7a0b\u5e8f\u2026",
     },
     "zh_TW": {
         # ── Other ─────────────────────────────────────────────────────
@@ -1055,6 +1115,9 @@ _ACTION_TR: dict[str, dict[str, str]] = {
 
         # ── Custom ────────────────────────────────────────────────────
         "Custom Shortcut\u2026": "\u81ea\u8a02\u5feb\u901f\u9375\u2026",
+
+        # ── Launch ────────────────────────────────────────────────────
+        "Add Program\u2026": "\u65b0\u589e\u555f\u52d5\u7a0b\u5f0f\u2026",
     },
 }
 
